@@ -1,0 +1,27 @@
+# Binary assets (too large for git, copyright)
+extension/
+android/
+ios/
+
+# Raw recon data (passive scan outputs)
+recon/
+
+# Netlify deployment artifacts
+poc/c98staging-drain/.netlify/
+poc/c98staging-drain/netlify/
+
+# Backup files
+*.bak
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+
+# Windsurf
+.windsurf/
+
+# Netlify state files (deploy infra IDs)
+**/.netlify/

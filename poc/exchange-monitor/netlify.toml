@@ -1,0 +1,64 @@
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["@netlify/blobs"]
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Access-Control-Allow-Origin = "*"
+    Access-Control-Allow-Methods = "GET, POST, PUT, DELETE, OPTIONS"
+    Access-Control-Allow-Headers = "*"
+    Cache-Control = "no-cache"
+
+# Catch-all redirect: any path not matching a static file or known function
+# goes to the catch function (simulates a real API server)
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/catch"
+  status = 200
+
+[[redirects]]
+  from = "/v1/*"
+  to = "/.netlify/functions/catch"
+  status = 200
+
+[[redirects]]
+  from = "/v2/*"
+  to = "/.netlify/functions/catch"
+  status = 200
+
+[[redirects]]
+  from = "/exchange/*"
+  to = "/.netlify/functions/catch"
+  status = 200
+
+[[redirects]]
+  from = "/swap/*"
+  to = "/.netlify/functions/catch"
+  status = 200
+
+[[redirects]]
+  from = "/trade/*"
+  to = "/.netlify/functions/catch"
+  status = 200
+
+[[redirects]]
+  from = "/order/*"
+  to = "/.netlify/functions/catch"
+  status = 200
+
+[[redirects]]
+  from = "/health"
+  to = "/.netlify/functions/catch"
+  status = 200
+
+[[redirects]]
+  from = "/ping"
+  to = "/.netlify/functions/catch"
+  status = 200
+
+# Proxy function is NOT caught by the catch-all — it's accessed directly via /.netlify/functions/proxy

